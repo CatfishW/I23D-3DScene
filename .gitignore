@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.env
+.venv
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.cache/
+
+# Build / temp
+dist/
+build/
+*.log
+
+# OS
+.DS_Store
+
+# Git
+.gitmodules
