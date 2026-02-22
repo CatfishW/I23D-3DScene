@@ -17,6 +17,9 @@ export default function FlashWorldPage() {
     resolution: '720p',
     poissonDepth: 9,
     opacityThreshold: 0.1,
+    textPrompt: '',
+    generateVideo: false,
+    videoFps: 15,
   })
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -64,7 +67,7 @@ export default function FlashWorldPage() {
   }
 
   const handleGenerate = async () => {
-    if (!image) return
+    if (!image && !params.textPrompt) return
 
     setIsGenerating(true)
     setProgress(0)
@@ -117,45 +120,64 @@ export default function FlashWorldPage() {
           <div className="space-y-6">
             <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700">
               <h2 className="text-xl font-semibold text-white mb-4">
-                1. Upload Image
+                1. Input Prompts
               </h2>
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Text Prompt (Optional)
+                  </label>
+                  <textarea
+                    value={params.textPrompt}
+                    onChange={(e) => setParams({ ...params, textPrompt: e.target.value })}
+                    disabled={isGenerating}
+                    placeholder="Describe the 3D scene you want to generate..."
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-24"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Image Prompt (Optional)
+                  </label>
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`
                   relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer
                   transition-all duration-300
                   ${isDragging
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-600 hover:border-gray-500'
-                  }
+                        ? 'border-blue-500 bg-blue-500/10'
+                        : 'border-gray-600 hover:border-gray-500'
+                      }
                   ${isGenerating ? 'opacity-50 pointer-events-none' : ''}
                 `}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  disabled={isGenerating}
-                />
-                {imagePreview ? (
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    className="max-h-64 mx-auto rounded-lg"
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    <svg className="w-16 h-16 mx-auto text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <p className="text-gray-400">
-                      Drag and drop an image or click to select
-                    </p>
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      disabled={isGenerating}
+                    />
+                    {imagePreview ? (
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="max-h-64 mx-auto rounded-lg"
+                      />
+                    ) : (
+                      <div className="space-y-4">
+                        <svg className="w-16 h-16 mx-auto text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-gray-400">
+                          Drag and drop an image or click to select
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
@@ -232,6 +254,37 @@ export default function FlashWorldPage() {
                     <span>0.30</span>
                   </div>
                 </div>
+
+                <div className="flex items-center space-x-3 pt-2">
+                  <input
+                    type="checkbox"
+                    id="generateVideo"
+                    checked={params.generateVideo}
+                    onChange={(e) => setParams({ ...params, generateVideo: e.target.checked })}
+                    disabled={isGenerating}
+                    className="w-5 h-5 bg-gray-700 border-gray-600 rounded text-blue-500 focus:ring-blue-500"
+                  />
+                  <label htmlFor="generateVideo" className="text-sm font-medium text-gray-300 select-none cursor-pointer">
+                    Generate Orbit Video (MP4)
+                  </label>
+                </div>
+
+                {params.generateVideo && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Video FPS
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={params.videoFps}
+                      onChange={(e) => setParams({ ...params, videoFps: Number(e.target.value) })}
+                      disabled={isGenerating}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -241,11 +294,11 @@ export default function FlashWorldPage() {
               </h2>
               <button
                 onClick={handleGenerate}
-                disabled={!image || isGenerating}
+                disabled={(!image && !params.textPrompt) || isGenerating}
                 className={`
                   w-full py-4 px-6 rounded-xl font-semibold text-lg
                   transition-all duration-300
-                  ${!image || isGenerating
+                  ${(!image && !params.textPrompt) || isGenerating
                     ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-500 text-white hover:shadow-lg hover:shadow-blue-500/30'
                   }
@@ -320,11 +373,11 @@ export default function FlashWorldPage() {
                 <h2 className="text-xl font-semibold text-white mb-4">
                   Download
                 </h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <a
                     href={result.modelUrl}
                     download={`${result.uid}.glb`}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -334,13 +387,26 @@ export default function FlashWorldPage() {
                   <a
                     href={result.gaussianUrl}
                     download={`${result.uid}.spz`}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg transition-colors"
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                     SPZ Gaussians
                   </a>
+                  {result.videoUrl && (
+                    <a
+                      href={result.videoUrl}
+                      download={`${result.uid}.mp4`}
+                      className="col-span-1 md:col-span-2 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      MP4 Video
+                    </a>
+                  )}
                 </div>
                 <p className="text-gray-500 text-xs mt-4">
                   UID: {result.uid}

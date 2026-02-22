@@ -6,8 +6,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:23555',
+  generateBuildId: async () => {
+    // Force unique build IDs to avoid stale chunk caching
+    return `build-${Date.now()}`
+  },
+  webpack: (config) => {
+    // Add a salt to force new chunk hashes on every build
+    // This prevents stale cached chunks from being served
+    config.output.hashSalt = `deploy-${Date.now()}`
+    return config
   },
 }
 

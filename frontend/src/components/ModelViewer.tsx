@@ -1,9 +1,10 @@
 'use client'
 
-import { Suspense, useEffect, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Environment, useGLTF, useFBX, Center, Loader, useAnimations } from '@react-three/drei'
 import * as THREE from 'three'
+import { createAnimationPresets, retargetAnimation } from '@/lib/animations'
 
 interface ModelViewerProps {
   modelUrl: string | null;
@@ -18,6 +19,7 @@ interface AnimState {
   currentAnimation: string;
   isPlaying: boolean;
   animationSpeed: number;
+  hasBones: boolean;
 }
 
 function Model({
@@ -25,6 +27,7 @@ function Model({
   isRigged,
   onAnimState,
   controlRef,
+  extraAnimations,
 }: {
   url: string;
   isRigged?: boolean;
@@ -34,87 +37,121 @@ function Model({
     setIsPlaying: (v: boolean) => void;
     setAnimationSpeed: (v: number) => void;
   } | null>;
+  extraAnimations: THREE.AnimationClip[];
 }) {
   const isFBX = url.toLowerCase().includes('.fbx');
 
   return (
     <Suspense fallback={null}>
       {isFBX ? (
-        <FBXModel url={url} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} />
+        <FBXModel url={url} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} extraAnimations={extraAnimations} />
       ) : (
-        <GLTFModel url={url} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} />
+        <GLTFModel url={url} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} extraAnimations={extraAnimations} />
       )}
     </Suspense>
   );
 }
 
-function GLTFModel({ url, isRigged, onAnimState, controlRef }: any) {
+function GLTFModel({ url, isRigged, onAnimState, controlRef, extraAnimations }: any) {
   const { scene, animations } = useGLTF(url) as any
-  return <BaseModel scene={scene} animations={animations} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} />
+  return <BaseModel scene={scene} animations={animations} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} extraAnimations={extraAnimations} />
 }
 
-function FBXModel({ url, isRigged, onAnimState, controlRef }: any) {
+function FBXModel({ url, isRigged, onAnimState, controlRef, extraAnimations }: any) {
   const fbx = useFBX(url)
-  return <BaseModel scene={fbx} animations={fbx.animations || []} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} />
+  return <BaseModel scene={fbx} animations={fbx.animations || []} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} extraAnimations={extraAnimations} />
 }
 
 function BaseModel({
   scene,
-  animations,
+  animations: embeddedAnimations,
   isRigged,
   onAnimState,
   controlRef,
+  extraAnimations,
 }: {
   scene: THREE.Group | THREE.Object3D;
   animations: THREE.AnimationClip[];
   isRigged?: boolean;
   onAnimState: (state: AnimState) => void;
   controlRef: React.MutableRefObject<any>;
+  extraAnimations: THREE.AnimationClip[];
 }) {
-  const { actions, mixer } = useAnimations(animations, scene)
+  // Combine embedded + extra + preset animations
+  const [presetAnimations, setPresetAnimations] = useState<THREE.AnimationClip[]>([])
   const [isPlaying, setIsPlaying] = useState(true)
   const [animationSpeed, setAnimationSpeed] = useState(1)
   const [currentAnimation, setCurrentAnimation] = useState<string>('')
   const initializedRef = useRef(false)
+  const [hasBones, setHasBones] = useState(false)
+
+  // Generate preset animations when scene loads
+  useEffect(() => {
+    if (scene && isRigged) {
+      const presets = createAnimationPresets(scene)
+      setPresetAnimations(presets)
+    }
+  }, [scene, isRigged])
+
+  const allAnimations = [
+    ...embeddedAnimations,
+    ...extraAnimations.map(clip => retargetAnimation(clip, scene)),
+    ...presetAnimations
+  ]
+  const { actions, mixer } = useAnimations(allAnimations, scene)
 
   useEffect(() => {
     if (scene) {
-      let skeleton: THREE.Skeleton | null = null
-      const bones: THREE.Bone[] = []
+      let hasBone = false
+      const bonesToHide: THREE.Object3D[] = []
+
       scene.traverse((child) => {
         if (child instanceof THREE.Bone) {
-          bones.push(child)
+          hasBone = true
+          bonesToHide.push(child)
         }
-      })
-      if (bones.length > 0) {
-        skeleton = new THREE.Skeleton(bones)
-      }
-      scene.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = true
           child.receiveShadow = true
-          const skinnedChild = child as unknown as THREE.SkinnedMesh
-          if (skinnedChild.isSkinnedMesh && skinnedChild.skeleton === undefined && skeleton) {
-            skinnedChild.bind(skeleton)
+          // Don't render if this mesh is parented to a bone and has no material/texture
+          // (likely a bone visualization mesh)
+          if (child.parent instanceof THREE.Bone && !child.material) {
+            child.visible = false
+          }
+        }
+        // Hide non-mesh objects that are bone containers (armature parent objects)
+        if (child.type === 'Object3D' && !(child instanceof THREE.Bone) && !(child instanceof THREE.Mesh)) {
+          const hasBoneChild = child.children.some((c: any) => c instanceof THREE.Bone)
+          if (hasBoneChild && child !== scene) {
+            child.traverse((obj) => {
+              if (obj instanceof THREE.Mesh && !obj.material) {
+                obj.visible = false
+              }
+            })
           }
         }
       })
+
+      // Bones themselves should never be visible (they don't have geometry in proper GLB files)
+      bonesToHide.forEach(bone => {
+        bone.visible = false
+      })
+
+      setHasBones(hasBone)
     }
   }, [scene])
 
   useEffect(() => {
-    if (animations.length > 0 && !initializedRef.current) {
+    const animNames = Object.keys(actions)
+    if (animNames.length > 0 && !initializedRef.current) {
       initializedRef.current = true
-      const animNames = Object.keys(actions)
-      if (animNames.length > 0) {
-        setCurrentAnimation(animNames[0])
-        const action = actions[animNames[0]]
-        if (action) {
-          action.reset().play()
-        }
+      setCurrentAnimation(animNames[0])
+      const action = actions[animNames[0]]
+      if (action) {
+        action.reset().setLoop(THREE.LoopRepeat, Infinity).play()
       }
     }
-  }, [animations, actions])
+  }, [actions])
 
   useEffect(() => {
     if (mixer) {
@@ -124,13 +161,14 @@ function BaseModel({
 
   useEffect(() => {
     onAnimState({
-      animations,
+      animations: allAnimations,
       animNames: Object.keys(actions),
       currentAnimation,
       isPlaying,
       animationSpeed,
+      hasBones,
     })
-  }, [animations, actions, currentAnimation, isPlaying, animationSpeed, onAnimState])
+  }, [allAnimations.length, actions, currentAnimation, isPlaying, animationSpeed, onAnimState, hasBones])
 
   useEffect(() => {
     controlRef.current = {
@@ -139,27 +177,13 @@ function BaseModel({
         Object.values(actions).forEach(a => a?.fadeOut(0.2))
         const action = actions[name]
         if (action) {
-          action.reset().fadeIn(0.2).play()
+          action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.2).play()
         }
       },
       setIsPlaying,
       setAnimationSpeed,
     }
   }, [actions, controlRef])
-
-  useFrame((state) => {
-    if (isRigged && isPlaying && animations.length === 0) {
-      const time = state.clock.getElapsedTime() * animationSpeed;
-      scene.traverse((child) => {
-        if (child instanceof THREE.Bone) {
-          const animAmount = 0.05;
-          const offset = child.position.y * 2;
-          child.rotation.x = Math.sin(time + offset) * animAmount;
-          child.rotation.z = Math.cos(time * 0.7 + offset) * (animAmount * 0.5);
-        }
-      });
-    }
-  });
 
   return (
     <Center>
@@ -189,6 +213,7 @@ function Scene({
   isRigged,
   onAnimState,
   controlRef,
+  extraAnimations,
 }: {
   modelUrl: string;
   isRigged?: boolean;
@@ -198,12 +223,13 @@ function Scene({
     setIsPlaying: (v: boolean) => void;
     setAnimationSpeed: (v: number) => void;
   } | null>;
+  extraAnimations: THREE.AnimationClip[];
 }) {
   return (
     <>
       <Lights />
       <Suspense fallback={null}>
-        <Model url={modelUrl} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} />
+        <Model url={modelUrl} isRigged={isRigged} onAnimState={onAnimState} controlRef={controlRef} extraAnimations={extraAnimations} />
       </Suspense>
       <Environment preset="studio" background={false} />
       <OrbitControls
@@ -222,11 +248,48 @@ function Scene({
 export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [animState, setAnimState] = useState<AnimState | null>(null)
+  const [extraAnimations, setExtraAnimations] = useState<THREE.AnimationClip[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const controlRef = useRef<{
     setCurrentAnimation: (name: string) => void;
     setIsPlaying: (v: boolean) => void;
     setAnimationSpeed: (v: number) => void;
   } | null>(null)
+
+  // Reset extra animations when model changes
+  useEffect(() => {
+    setExtraAnimations([])
+  }, [modelUrl])
+
+  const handleAnimationUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js')
+      const loader = new FBXLoader()
+      const arrayBuffer = await file.arrayBuffer()
+      const fbx = loader.parse(arrayBuffer, '')
+
+      if (fbx.animations && fbx.animations.length > 0) {
+        // Name clips after the file
+        const baseName = file.name.replace(/\.[^.]+$/, '')
+        const clips = fbx.animations.map((clip: THREE.AnimationClip, i: number) => {
+          clip.name = fbx.animations.length > 1 ? `${baseName}_${i + 1}` : baseName
+          return clip
+        })
+        setExtraAnimations(prev => [...prev, ...clips])
+      } else {
+        alert('No animations found in the uploaded file.')
+      }
+    } catch (err) {
+      console.error('Failed to load animation file:', err)
+      alert('Failed to load animation file. Make sure it\'s a valid FBX file.')
+    }
+
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [])
 
   if (!modelUrl && !isLoading) {
     return (
@@ -267,11 +330,13 @@ export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelView
   }
 
   const hasAnimations = animState && animState.animNames.length > 0
-  const showControls = (isRigged || hasAnimations) && animState
+  const showControls = isRigged && animState && (hasAnimations || animState.hasBones)
 
   return (
     <div ref={containerRef} className="w-full h-[500px] bg-gray-900 rounded-xl overflow-hidden relative">
+      {/* Use key to force full re-mount when model changes */}
       <Canvas
+        key={modelUrl}
         shadows
         camera={{ position: [2, 2, 2], fov: 50 }}
         style={{ width: '100%', height: '100%' }}
@@ -282,11 +347,12 @@ export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelView
           isRigged={isRigged}
           onAnimState={setAnimState}
           controlRef={controlRef}
+          extraAnimations={extraAnimations}
         />
       </Canvas>
       <Loader />
 
-      {/* Animation Controls Overlay - rendered as HTML outside Canvas */}
+      {/* Animation Controls Overlay */}
       {showControls && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-sm rounded-xl px-4 py-3 flex items-center gap-3 z-10 min-w-max border border-white/10 shadow-2xl">
           {/* Animation/Rigged badge */}
@@ -297,13 +363,7 @@ export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelView
             </span>
           </div>
 
-          {!hasAnimations && (
-            <span className="text-gray-400 text-[10px] italic border-l border-white/10 pl-3 mr-1">
-              Procedural Preview
-            </span>
-          )}
-
-          {/* Animation selector - only shown if multiple animations */}
+          {/* Animation selector */}
           {hasAnimations && animState.animNames.length > 1 && (
             <select
               value={animState.currentAnimation}
@@ -323,11 +383,11 @@ export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelView
 
           {/* Play/Pause button */}
           <button
-            onClick={() => controlRef.current?.setIsPlaying(!animState.isPlaying)}
+            onClick={() => controlRef.current?.setIsPlaying(!animState?.isPlaying)}
             className="w-8 h-8 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
-            title={animState.isPlaying ? 'Pause' : 'Play'}
+            title={animState?.isPlaying ? 'Pause' : 'Play'}
           >
-            {animState.isPlaying ? (
+            {animState?.isPlaying ? (
               <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
               </svg>
@@ -348,14 +408,34 @@ export default function ModelViewer({ modelUrl, isLoading, isRigged }: ModelView
               min="0.1"
               max="2"
               step="0.1"
-              value={animState.animationSpeed}
+              value={animState?.animationSpeed ?? 1}
               onChange={(e) => controlRef.current?.setAnimationSpeed(parseFloat(e.target.value))}
               className="w-20 accent-blue-500"
             />
-            <span className="text-white text-xs w-8 tabular-nums">{animState.animationSpeed.toFixed(1)}x</span>
+            <span className="text-white text-xs w-8 tabular-nums">{(animState?.animationSpeed ?? 1).toFixed(1)}x</span>
           </div>
+
+          {/* Upload animation button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-8 h-8 flex items-center justify-center bg-purple-700 hover:bg-purple-600 rounded-full transition-colors"
+            title="Upload animation FBX (e.g. from Mixamo)"
+          >
+            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
       )}
+
+      {/* Hidden file input for animation upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".fbx"
+        onChange={handleAnimationUpload}
+        className="hidden"
+      />
     </div>
   )
 }

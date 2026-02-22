@@ -26,6 +26,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null)
   const [historyModelBlobUrl, setHistoryModelBlobUrl] = useState<string | null>(null)
+  const [historyRiggingTasks, setHistoryRiggingTasks] = useState<Record<string, { progress: number, stage: string, isRigging: boolean }>>({})
   const [params, setParams] = useState<GenerationParams>({
     removeBackground: true,
     texture: true,
@@ -481,13 +482,29 @@ export default function Home() {
                   </span>
                 </div>
                 <p className="text-gray-400 text-xs mb-3 truncate">{item.uid}</p>
+                
+                {historyRiggingTasks[item.uid]?.isRigging && (
+                  <div className="mb-3">
+                    <div className="w-full bg-gray-700 rounded-full h-1.5 mb-1">
+                      <div
+                        className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${historyRiggingTasks[item.uid].progress}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-purple-400 truncate">
+                      {historyRiggingTasks[item.uid].stage}
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       handleSelectHistoryItem(item)
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                    disabled={historyRiggingTasks[item.uid]?.isRigging}
+                    className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white text-sm rounded-lg transition-colors"
                   >
                     View
                   </button>
@@ -495,7 +512,7 @@ export default function Home() {
                     href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'}${item.model_url}`}
                     download
                     onClick={(e) => e.stopPropagation()}
-                    className="flex-1 block text-center px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                    className="flex-1 block text-center px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
                   >
                     Download
                   </a>
@@ -503,19 +520,41 @@ export default function Home() {
                     <button
                       onClick={async (e) => {
                         e.stopPropagation()
+                        const uid = item.uid.replace('_rigged', '');
+                        
+                        setHistoryRiggingTasks(prev => ({
+                          ...prev,
+                          [item.uid]: { progress: 0, stage: 'Starting...', isRigging: true }
+                        }));
+
                         try {
-                          const rigRes = await rigModel(item.uid.replace('_rigged', ''), (p, s) => {
-                            console.log(`Rigging: ${p}% - ${s}`);
+                          await rigModel(uid, (p, s) => {
+                            setHistoryRiggingTasks(prev => ({
+                              ...prev,
+                              [item.uid]: { progress: p, stage: s, isRigging: true }
+                            }));
                           });
-                          alert('Rigging completed! Model added to history.');
+                          
+                          setHistoryRiggingTasks(prev => {
+                            const next = { ...prev };
+                            delete next[item.uid];
+                            return next;
+                          });
+                          
                           loadHistory();
                         } catch (err) {
                           alert('Rigging failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                          setHistoryRiggingTasks(prev => {
+                            const next = { ...prev };
+                            delete next[item.uid];
+                            return next;
+                          });
                         }
                       }}
-                      className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                      disabled={historyRiggingTasks[item.uid]?.isRigging}
+                      className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white text-sm rounded-lg transition-colors"
                     >
-                      Rig
+                      {historyRiggingTasks[item.uid]?.isRigging ? '...' : 'Rig'}
                     </button>
                   )}
                 </div>

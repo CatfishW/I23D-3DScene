@@ -1,0 +1,35 @@
+{
+  "pages": {
+    "/_not-found/page": [
+      "static/chunks/webpack-e10ff8a43cdc7a68.js",
+      "static/chunks/fd9d1056-f32a109332ecaf58.js",
+      "static/chunks/117-dd66cbccc120cd6c.js",
+      "static/chunks/main-app-53149a375b1d8366.js",
+      "static/chunks/app/_not-found/page-593da92a1aeed40a.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack-e10ff8a43cdc7a68.js",
+      "static/chunks/fd9d1056-f32a109332ecaf58.js",
+      "static/chunks/117-dd66cbccc120cd6c.js",
+      "static/chunks/main-app-53149a375b1d8366.js",
+      "static/css/989ed969b6d14e39.css",
+      "static/chunks/app/layout-1587f71ef2a17b00.js"
+    ],
+    "/flashworld/page": [
+      "static/chunks/webpack-e10ff8a43cdc7a68.js",
+      "static/chunks/fd9d1056-f32a109332ecaf58.js",
+      "static/chunks/117-dd66cbccc120cd6c.js",
+      "static/chunks/main-app-53149a375b1d8366.js",
+      "static/chunks/app/flashworld/page-0c89abaf49c85fa9.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-e10ff8a43cdc7a68.js",
+      "static/chunks/fd9d1056-f32a109332ecaf58.js",
+      "static/chunks/117-dd66cbccc120cd6c.js",
+      "static/chunks/main-app-53149a375b1d8366.js",
+      "static/chunks/b536a0f1-609b808bf3cb3763.js",
+      "static/chunks/101-3bfdf57725c1ef6f.js",
+      "static/chunks/app/page-405747c098b1f969.js"
+    ]
+  }
+}

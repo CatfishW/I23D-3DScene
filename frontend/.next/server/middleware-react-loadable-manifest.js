@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST='{"../node_modules/@react-three/drei/core/VideoTexture.js -> hls.js":{"id":null,"files":[]},"../node_modules/@react-three/drei/web/FaceLandmarker.js -> @mediapipe/tasks-vision":{"id":null,"files":[]},"components/ModelViewer.tsx -> three/examples/jsm/loaders/FBXLoader.js":{"id":8079,"files":["static/chunks/79.7dfdcbd9005e969a.js"]}}';

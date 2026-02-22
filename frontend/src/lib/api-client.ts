@@ -10,12 +10,12 @@ export async function removeBackground(imageBase64: string): Promise<string> {
       image: imageBase64,
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Failed to remove background: ${error}`);
   }
-  
+
   const data = await response.json();
   return data.image;
 }
@@ -79,9 +79,9 @@ export async function generate3D(
     textureResolution = 768,
     textureViews = 9
   } = options;
-  
+
   onProgress?.(5, 'Starting generation...');
-  
+
   // Start async generation
   const response = await fetch(`${API_URL}/send`, {
     method: 'POST',
@@ -101,26 +101,26 @@ export async function generate3D(
       texture_views: textureViews,
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Failed to start generation: ${error}`);
   }
-  
+
   const { uid } = await response.json();
   onProgress?.(10, 'Queued...');
-  
+
   // Poll for status
   let status: StatusResponse;
   let attempts = 0;
   const maxAttempts = 600; // 10 minutes max
-  
+
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const statusResponse = await fetch(`${API_URL}/status/${uid}`);
+
+    const statusResponse = await fetch(`${API_URL}/status/${uid}`, { cache: 'no-store' });
     status = await statusResponse.json();
-    
+
     if (status.status === 'completed') {
       onProgress?.(100, 'Completed!');
       // Create blob URL from base64
@@ -133,22 +133,22 @@ export async function generate3D(
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'model/gltf-binary' });
       const modelUrl = URL.createObjectURL(blob);
-      
+
       return {
         uid,
         modelUrl,
         modelBase64,
       };
     }
-    
+
     if (status.status === 'error') {
       throw new Error(status.message || 'Generation failed');
     }
-    
+
     // Update progress
     const progressValue = status.progress || 0;
     let stageText = 'Processing...';
-    
+
     if (status.status === 'loading_models') {
       stageText = 'Loading models...';
     } else if (status.status === 'texturing') {
@@ -156,12 +156,12 @@ export async function generate3D(
     } else if (status.status === 'processing') {
       stageText = 'Generating mesh...';
     }
-    
+
     onProgress?.(Math.max(progressValue, 15), stageText);
-    
+
     attempts++;
   }
-  
+
   throw new Error('Generation timed out');
 }
 
@@ -191,28 +191,28 @@ export async function rigModel(
       device: device,
     }),
   });
-  
+
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Failed to start rigging: ${error}`);
   }
-  
+
   const { uid } = await response.json();
   onProgress?.(10, 'Rigging queued...');
-  
+
   // Poll for status
   let attempts = 0;
   const maxAttempts = 600; // 10 minutes max
-  
+
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const statusResponse = await fetch(`${API_URL}/rig/${uid}/status`);
+
+    const statusResponse = await fetch(`${API_URL}/rig/${uid}/status`, { cache: 'no-store' });
     const status = await statusResponse.json();
-    
+
     if (status.status === 'completed') {
       onProgress?.(100, 'Rigging completed!');
-      
+
       // Get the rigged model URL
       const downloadResponse = await fetch(`${API_URL}/rig/${uid}/download`);
       const blob = await downloadResponse.blob();
@@ -224,22 +224,22 @@ export async function rigModel(
       if (contentDisposition.includes('.fbx') || contentType === 'application/octet-stream') {
         modelUrl += '#.fbx';
       }
-      
+
       return {
         uid,
         modelUrl,
         status: 'completed',
       };
     }
-    
+
     if (status.status.startsWith('error')) {
       throw new Error(`Rigging failed: ${status.status}`);
     }
-    
+
     // Update progress
     const progressValue = status.progress || 0;
     let stageText = 'Rigging in progress...';
-    
+
     if (status.progress && status.progress < 30) {
       stageText = 'Generating skeleton...';
     } else if (status.progress && status.progress < 70) {
@@ -247,11 +247,11 @@ export async function rigModel(
     } else {
       stageText = 'Merging skeleton and mesh...';
     }
-    
+
     onProgress?.(progressValue, stageText);
     attempts++;
   }
-  
+
   throw new Error('Rigging timed out');
 }
 
@@ -287,13 +287,13 @@ export interface HistoryItem {
  * Get generation history
  */
 export async function getHistory(limit: number = 50): Promise<HistoryItem[]> {
-  const response = await fetch(`${API_URL}/history?limit=${limit}`);
-  
+  const response = await fetch(`${API_URL}/history?limit=${limit}&t=${Date.now()}`, { cache: 'no-store' });
+
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Failed to get history: ${error}`);
   }
-  
+
   const data = await response.json();
   return data.history;
 }
@@ -319,7 +319,7 @@ export async function getModels(limit = 20, offset = 0): Promise<{
   }>;
   count: number;
 }> {
-  const response = await fetch(`${API_URL}/models?limit=${limit}&offset=${offset}`);
+  const response = await fetch(`${API_URL}/models?limit=${limit}&offset=${offset}&t=${Date.now()}`, { cache: 'no-store' });
   return response.json();
 }
 
@@ -334,19 +334,23 @@ export async function deleteModel(uid: string): Promise<void> {
 // FlashWorld API Client (port 8082)
 // ============================================
 
-const FLASHWORLD_API_URL = process.env.NEXT_PUBLIC_FLASHWORLD_API_URL || 'http://localhost:23548';
+const FLASHWORLD_API_URL = process.env.NEXT_PUBLIC_FLASHWORLD_API_URL || '/I23D/api/flashworld';
 
 export interface FlashWorldGenerationParams {
   numFrames: 24 | 48;
   resolution: '480p' | '720p';
   poissonDepth: number;
   opacityThreshold: number;
+  textPrompt?: string;
+  generateVideo?: boolean;
+  videoFps?: number;
 }
 
 export interface FlashWorldGenerationResult {
   uid: string;
   modelUrl: string;
   gaussianUrl?: string;
+  videoUrl?: string;
 }
 
 export interface FlashWorldStatusResponse {
@@ -357,7 +361,7 @@ export interface FlashWorldStatusResponse {
 }
 
 export function startFlashWorldGeneration(
-  imageBase64: string,
+  imageBase64: string | null,
   params: FlashWorldGenerationParams
 ): Promise<{ uid: string }> {
   return fetch(`${FLASHWORLD_API_URL}/generate`, {
@@ -367,10 +371,13 @@ export function startFlashWorldGeneration(
     },
     body: JSON.stringify({
       image: imageBase64,
+      text_prompt: params.textPrompt || "",
       num_frames: params.numFrames,
       resolution: params.resolution,
       poisson_depth: params.poissonDepth,
       opacity_threshold: params.opacityThreshold,
+      generate_video: params.generateVideo || false,
+      video_fps: params.videoFps || 15,
     }),
   }).then(async (response) => {
     if (!response.ok) {
@@ -382,7 +389,7 @@ export function startFlashWorldGeneration(
 }
 
 export function getFlashWorldStatus(uid: string): Promise<FlashWorldStatusResponse> {
-  return fetch(`${FLASHWORLD_API_URL}/status/${uid}`).then((response) => response.json());
+  return fetch(`${FLASHWORLD_API_URL}/status/${uid}`, { cache: 'no-store' }).then((response) => response.json());
 }
 
 export function getFlashWorldDownloadUrl(uid: string): string {
@@ -393,41 +400,51 @@ export function getFlashWorldGaussianDownloadUrl(uid: string): string {
   return `${FLASHWORLD_API_URL}/download/${uid}/gaussians`;
 }
 
+export function getFlashWorldVideoDownloadUrl(uid: string): string {
+  return `${FLASHWORLD_API_URL}/download/${uid}/video`;
+}
+
 export async function generateFlashWorld(
-  imageBase64: string,
+  imageBase64: string | null,
   params: FlashWorldGenerationParams,
   onProgress?: (progress: number, stage: string) => void
 ): Promise<FlashWorldGenerationResult> {
   onProgress?.(5, 'Starting generation...');
-  
+
   const { uid } = await startFlashWorldGeneration(imageBase64, params);
   onProgress?.(10, 'Queued...');
-  
+
   let attempts = 0;
   const maxAttempts = 600;
-  
+
   while (attempts < maxAttempts) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    
+
     const status = await getFlashWorldStatus(uid);
-    
+
     if (status.status === 'completed') {
       onProgress?.(100, 'Completed!');
       const modelUrl = getFlashWorldDownloadUrl(uid);
       const gaussianUrl = getFlashWorldGaussianDownloadUrl(uid);
-      return { uid, modelUrl, gaussianUrl };
+      let videoUrl: string | undefined;
+
+      if (params.generateVideo) {
+        videoUrl = getFlashWorldVideoDownloadUrl(uid);
+      }
+
+      return { uid, modelUrl, gaussianUrl, videoUrl };
     }
-    
+
     if (status.status === 'error') {
       throw new Error(status.message || 'Generation failed');
     }
-    
+
     const progressValue = status.progress || 0;
     const stageText = status.stage || 'Processing...';
     onProgress?.(Math.max(progressValue, 15), stageText);
-    
+
     attempts++;
   }
-  
+
   throw new Error('Generation timed out');
 }
